@@ -17,10 +17,10 @@ BASE_ID = get_config_value("airtable_base_id", "AIRTABLE_BASE_ID", "your_base_id
 TABLE_NAME = get_config_value("airtable_table_name", "AIRTABLE_TABLE_NAME", "your_table_name")
 OUTPUT_TABLE_NAME = get_config_value("airtable_output_table_name", "AIRTABLE_OUTPUT_TABLE_NAME", "your_output_table_name")
 
-OUTPUT_COUNTRY_FIELD = get_config_value("airtable_output_country_field", "AIRTABLE_OUTPUT_COUNTRY_FIELD", "Country")
-OUTPUT_MONTH_FIELD = get_config_value("airtable_output_month_field", "AIRTABLE_OUTPUT_MONTH_FIELD", "Month")
+OUTPUT_COUNTRY_FIELD = get_config_value("airtable_output_country_field", "AIRTABLE_OUTPUT_COUNTRY_FIELD", "country")
+OUTPUT_MONTH_FIELD = get_config_value("airtable_output_month_field", "AIRTABLE_OUTPUT_MONTH_FIELD", "month")
 OUTPUT_USAGE_FIELD = get_config_value("airtable_output_usage_field", "AIRTABLE_OUTPUT_USAGE_FIELD", "Master Usage")
-OUTPUT_PLATFORM_FIELD = get_config_value("airtable_output_platform_field", "AIRTABLE_OUTPUT_PLATFORM_FIELD", "Platform")
+OUTPUT_PLATFORM_FIELD = get_config_value("airtable_output_platform_field", "AIRTABLE_OUTPUT_PLATFORM_FIELD", "platform")
 
 def _get_tables():
     """Return (capture_table, output_table) using the modern pyairtable Api."""
@@ -54,9 +54,9 @@ def upsert_monthly_results(month_label, results_df):
     updated_count = 0
 
     for _, row in results_df.iterrows():
-        country = str(row['Country']).strip()
+        country = str(row['country']).strip()
         usage = str(row['Master Usage']).strip()
-        platform = str(row.get('Platform', '')).strip()
+        platform = str(row.get('platform', '')).strip()
 
         record_fields = {
             OUTPUT_USAGE_FIELD: usage,
@@ -64,7 +64,7 @@ def upsert_monthly_results(month_label, results_df):
             OUTPUT_MONTH_FIELD: month_label,
             OUTPUT_PLATFORM_FIELD: platform,
         }
-        record_key = (country, month_label, platform)
+        record_key = (country, str(month_label).strip(), platform)
 
         if record_key in existing_map:
             output_table.update(existing_map[record_key], record_fields)
@@ -75,7 +75,7 @@ def upsert_monthly_results(month_label, results_df):
 
     return created_count, updated_count
 
-REQUIRED_SOURCE_COLS = {'Period', 'Master Usage'}
+REQUIRED_SOURCE_COLS = {'period', 'Master Usage'}
 
 def aggregate_usage(usage_series):
     """
@@ -124,13 +124,13 @@ def load_data():
         )
         st.stop()
 
-    df_raw['Period'] = pd.to_datetime(df_raw['Period'], errors='coerce')
-    df_raw = df_raw.dropna(subset=['Period'])
+    df_raw['period'] = pd.to_datetime(df_raw['period'], errors='coerce')
+    df_raw = df_raw.dropna(subset=['period'])
     if df_raw.empty:
-        st.warning("No records with a valid Period date were found.")
+        st.warning("No records with a valid period date were found.")
         st.stop()
 
-    df_raw['Month_Year'] = df_raw['Period'].dt.strftime('%B %Y')
+    df_raw['Month_Year'] = df_raw['period'].dt.strftime('%B %Y')
     return df_raw
 
 
@@ -172,7 +172,7 @@ if st.button("Calculate & Push to Master Usage Table"):
         st.warning(f"No records found for {selected_month}.")
     else:
         # Group by Country + Platform (include only columns that exist)
-        group_cols = [c for c in ['Country', 'Platform'] if c in filtered_df.columns]
+        group_cols = [c for c in ['country', 'platform'] if c in filtered_df.columns]
 
         if not group_cols:
             # No grouping dimensions — aggregate everything into one row
@@ -187,12 +187,12 @@ if st.button("Calculate & Push to Master Usage Table"):
             )
 
         # Ensure expected columns exist
-        for col in ('Country', 'Platform'):
+        for col in ('country', 'platform'):
             if col not in results.columns:
                 results[col] = ''
 
-        results['Month'] = selected_month
-        results = results[['Master Usage', 'Country', 'Month', 'Platform']]
+        results['month'] = selected_month
+        results = results[['Master Usage', 'country', 'month', 'platform']]
 
         st.subheader(f"Results for {selected_month}")
         st.table(results)
