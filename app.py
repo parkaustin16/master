@@ -167,7 +167,8 @@ df = st.session_state.df
 months_with_data = set(df['Month_Year'].unique())
 
 # Generate all months for each year present in the data
-all_years = sorted(df['_year'].unique())
+# Only show years that have at least one month with actual records
+all_years = sorted(yr for yr in df['_year'].unique() if any(yr in m for m in months_with_data))
 all_month_years = []
 for yr in all_years:
     for m in range(1, 13):
