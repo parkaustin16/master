@@ -19,6 +19,7 @@ OUTPUT_TABLE_NAME = get_config_value("airtable_output_table_name", "AIRTABLE_OUT
 
 OUTPUT_COUNTRY_FIELD = get_config_value("airtable_output_country_field", "AIRTABLE_OUTPUT_COUNTRY_FIELD", "country")
 OUTPUT_MONTH_FIELD = get_config_value("airtable_output_month_field", "AIRTABLE_OUTPUT_MONTH_FIELD", "month")
+OUTPUT_YEAR_FIELD = get_config_value("airtable_output_year_field", "AIRTABLE_OUTPUT_YEAR_FIELD", "year")
 OUTPUT_USAGE_FIELD = get_config_value("airtable_output_usage_field", "AIRTABLE_OUTPUT_USAGE_FIELD", "Master Usage")
 OUTPUT_PLATFORM_FIELD = get_config_value("airtable_output_platform_field", "AIRTABLE_OUTPUT_PLATFORM_FIELD", "platform")
 
@@ -35,7 +36,7 @@ def fetch_data():
     return pd.DataFrame(rows)
 
 
-def upsert_monthly_results(month_label, results_df):
+def upsert_monthly_results(month_label, year_label, results_df):
     _, output_table = _get_tables()
     existing_records = output_table.all()
     existing_map = {}
@@ -45,6 +46,7 @@ def upsert_monthly_results(month_label, results_df):
         key = (
             str(fields.get(OUTPUT_COUNTRY_FIELD, '')).strip(),
             str(fields.get(OUTPUT_MONTH_FIELD, '')).strip(),
+            str(fields.get(OUTPUT_YEAR_FIELD, '')).strip(),
             str(fields.get(OUTPUT_PLATFORM_FIELD, '')).strip(),
         )
         if key[0] and key[1]:
@@ -62,9 +64,10 @@ def upsert_monthly_results(month_label, results_df):
             OUTPUT_USAGE_FIELD: usage,
             OUTPUT_COUNTRY_FIELD: country,
             OUTPUT_MONTH_FIELD: month_label,
+            OUTPUT_YEAR_FIELD: year_label,
             OUTPUT_PLATFORM_FIELD: platform,
         }
-        record_key = (country, str(month_label).strip(), platform)
+        record_key = (country, month_label, year_label, platform)
 
         if record_key in existing_map:
             output_table.update(existing_map[record_key], record_fields)
@@ -130,7 +133,9 @@ def load_data():
         st.warning("No records with a valid period date were found.")
         st.stop()
 
-    df_raw['Month_Year'] = df_raw['period'].dt.strftime('%B %Y')
+    df_raw['_month'] = df_raw['period'].dt.strftime('%B')
+    df_raw['_year'] = df_raw['period'].dt.strftime('%Y')
+    df_raw['Month_Year'] = df_raw['_month'] + ' ' + df_raw['_year']
     return df_raw
 
 
@@ -160,16 +165,18 @@ df = st.session_state.df
 
 # 2. Month Selector
 available_months = sorted(df['Month_Year'].unique(), reverse=True)
-selected_month = st.selectbox("Select Month", options=available_months)
+selected_month_year = st.selectbox("Select Month", options=available_months)
+selected_month = selected_month_year.split(' ')[0]   # e.g. "March"
+selected_year  = selected_month_year.split(' ')[1]   # e.g. "2026"
 
 # 3. Preview matching records
-filtered_df = df[df['Month_Year'] == selected_month]
-st.caption(f"{len(filtered_df)} record(s) found for {selected_month}.")
+filtered_df = df[df['Month_Year'] == selected_month_year]
+st.caption(f"{len(filtered_df)} record(s) found for {selected_month_year}.")
 
 # 4. Calculate & Push
 if st.button("Calculate & Push to Master Usage Table"):
     if filtered_df.empty:
-        st.warning(f"No records found for {selected_month}.")
+        st.warning(f"No records found for {selected_month_year}.")
     else:
         # Group by Country + Platform (include only columns that exist)
         group_cols = [c for c in ['country', 'platform'] if c in filtered_df.columns]
@@ -192,9 +199,10 @@ if st.button("Calculate & Push to Master Usage Table"):
                 results[col] = ''
 
         results['month'] = selected_month
-        results = results[['Master Usage', 'country', 'month', 'platform']]
+        results['year'] = selected_year
+        results = results[['Master Usage', 'country', 'month', 'year', 'platform']]
 
-        st.subheader(f"Results for {selected_month}")
+        st.subheader(f"Results for {selected_month_year}")
         st.table(results)
 
         # Grand total across all groups
@@ -202,7 +210,7 @@ if st.button("Calculate & Push to Master Usage Table"):
         st.metric("Grand Total", grand_total)
 
         try:
-            created_count, updated_count = upsert_monthly_results(selected_month, results)
+            created_count, updated_count = upsert_monthly_results(selected_month, selected_year, results)
             st.success(
                 f"Synced to **{OUTPUT_TABLE_NAME}**: "
                 f"{created_count} record(s) created, {updated_count} updated."
