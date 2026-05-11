@@ -164,7 +164,10 @@ if 'df' not in st.session_state:
 df = st.session_state.df
 
 # 2. Month Selector — build a full Jan–Dec list for every year in the data
-months_with_data = set(df['Month_Year'].unique())
+valid_mask = df['Master Usage'].apply(
+    lambda v: pd.notna(v) and '/' in str(v) and str(v).strip() != '0/0'
+)
+months_with_data = set(df.loc[valid_mask, 'Month_Year'].unique())
 
 # Generate all months for each year present in the data
 # Only show years that have at least one month with actual records
