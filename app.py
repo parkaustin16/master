@@ -1,13 +1,20 @@
-import streamlit as st
+import os
+
 import pandas as pd
+import streamlit as st
 from pyairtable import Table
-import datetime
+from requests.exceptions import HTTPError
 
 # --- Configuration & Connection ---
-# Replace these with your actual Airtable credentials or use st.secrets
-AIRTABLE_API_KEY = "your_api_key"
-BASE_ID = "your_base_id"
-TABLE_NAME = "your_table_name"
+def get_config_value(key, env_name, default=""):
+    if key in st.secrets:
+        return st.secrets[key]
+    return os.getenv(env_name, default)
+
+
+AIRTABLE_API_KEY = get_config_value("airtable_api_key", "AIRTABLE_API_KEY", "your_api_key")
+BASE_ID = get_config_value("airtable_base_id", "AIRTABLE_BASE_ID", "your_base_id")
+TABLE_NAME = get_config_value("airtable_table_name", "AIRTABLE_TABLE_NAME", "your_table_name")
 
 table = Table(AIRTABLE_API_KEY, BASE_ID, TABLE_NAME)
 
@@ -43,10 +50,28 @@ st.title("🌍 Global Master Usage Tracker")
 # 1. Fetch Data
 if 'df' not in st.session_state:
     with st.spinner("Fetching data from Airtable..."):
-        df_raw = fetch_data()
-        # Convert Period to datetime objects for easy filtering
-        df_raw['Period'] = pd.to_datetime(df_raw['Period'])
-        st.session_state.df = df_raw
+        try:
+            if AIRTABLE_API_KEY == "your_api_key" or BASE_ID == "your_base_id" or TABLE_NAME == "your_table_name":
+                st.error("Set your Airtable credentials in Streamlit secrets or environment variables before running the app.")
+                st.stop()
+
+            df_raw = fetch_data()
+            if df_raw.empty:
+                st.warning("Airtable returned no records.")
+                st.stop()
+
+            # Convert Period to datetime objects for easy filtering
+            df_raw['Period'] = pd.to_datetime(df_raw['Period'], errors='coerce')
+            df_raw = df_raw.dropna(subset=['Period'])
+            st.session_state.df = df_raw
+        except HTTPError as exc:
+            st.error("Airtable request failed. Check your API key, base ID, and table name.")
+            st.caption(str(exc))
+            st.stop()
+        except Exception as exc:
+            st.error("Unexpected error while loading Airtable data.")
+            st.caption(str(exc))
+            st.stop()
 
 df = st.session_state.df
 
