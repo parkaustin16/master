@@ -17,11 +17,24 @@ BASE_ID = get_config_value("airtable_base_id", "AIRTABLE_BASE_ID", "your_base_id
 TABLE_NAME = get_config_value("airtable_table_name", "AIRTABLE_TABLE_NAME", "your_table_name")
 OUTPUT_TABLE_NAME = get_config_value("airtable_output_table_name", "AIRTABLE_OUTPUT_TABLE_NAME", "your_output_table_name")
 
-OUTPUT_COUNTRY_FIELD = get_config_value("airtable_output_country_field", "AIRTABLE_OUTPUT_COUNTRY_FIELD", "country")
-OUTPUT_MONTH_FIELD = get_config_value("airtable_output_month_field", "AIRTABLE_OUTPUT_MONTH_FIELD", "month")
-OUTPUT_YEAR_FIELD = get_config_value("airtable_output_year_field", "AIRTABLE_OUTPUT_YEAR_FIELD", "year")
-OUTPUT_USAGE_FIELD = get_config_value("airtable_output_usage_field", "AIRTABLE_OUTPUT_USAGE_FIELD", "Master Usage")
+OUTPUT_COUNTRY_FIELD  = get_config_value("airtable_output_country_field",  "AIRTABLE_OUTPUT_COUNTRY_FIELD",  "country")
+OUTPUT_MONTH_FIELD    = get_config_value("airtable_output_month_field",    "AIRTABLE_OUTPUT_MONTH_FIELD",    "month")
+OUTPUT_YEAR_FIELD     = get_config_value("airtable_output_year_field",     "AIRTABLE_OUTPUT_YEAR_FIELD",     "year")
+OUTPUT_USAGE_FIELD    = get_config_value("airtable_output_usage_field",    "AIRTABLE_OUTPUT_USAGE_FIELD",    "Master Usage")
 OUTPUT_PLATFORM_FIELD = get_config_value("airtable_output_platform_field", "AIRTABLE_OUTPUT_PLATFORM_FIELD", "platform")
+OUTPUT_REGION_FIELD   = get_config_value("airtable_output_region_field",   "AIRTABLE_OUTPUT_REGION_FIELD",   "region")
+
+# Country code → region lookup
+_REGION_MAP: dict[str, str] = {}
+for _region, _countries in {
+    "Asia":   ["au","jp","hk","tw","in","sg","my","th","vn","ph","id"],
+    "Europe": ["uk","ch_fr","ch_de","fr","de","it","es","nl","cz","se","pt","hu","pl","at"],
+    "LATAM":  ["mx","br","ar","cl","co","pe","pa"],
+    "MEA":    ["kz","tr","eg_en","eg_ar","ma","sa_en","sa","za"],
+    "Canada": ["ca_en","ca_fr"],
+}.items():
+    for _code in _countries:
+        _REGION_MAP[_code.lower()] = _region
 
 def _get_tables():
     """Return (capture_table, output_table) using the modern pyairtable Api."""
@@ -59,6 +72,7 @@ def upsert_monthly_results(month_label, year_label, results_df):
         country = str(row['country']).strip()
         usage = str(row['Master Usage']).strip()
         platform = str(row.get('platform', '')).strip()
+        region = _REGION_MAP.get(country.lower(), '')
 
         record_fields = {
             OUTPUT_USAGE_FIELD: usage,
@@ -66,6 +80,7 @@ def upsert_monthly_results(month_label, year_label, results_df):
             OUTPUT_MONTH_FIELD: month_label,
             OUTPUT_YEAR_FIELD: year_label,
             OUTPUT_PLATFORM_FIELD: platform,
+            OUTPUT_REGION_FIELD: region,
         }
         record_key = (country, month_label, year_label, platform)
 
@@ -207,7 +222,8 @@ if st.button("Calculate & Push to Master Usage Table"):
 
         results['month'] = selected_month
         results['year'] = selected_year
-        results = results[['Master Usage', 'country', 'month', 'year', 'platform']]
+        results['region'] = results['country'].str.lower().map(_REGION_MAP).fillna('')
+        results = results[['Master Usage', 'country', 'month', 'year', 'platform', 'region']]
 
         # Drop rows where no valid Master Usage values were found
         results = results[results['Master Usage'] != '0/0']
