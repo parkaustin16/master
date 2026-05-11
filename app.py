@@ -171,9 +171,9 @@ months_with_data = set(df.loc[valid_mask, 'Month_Year'].unique())
 
 # Generate all months for each year present in the data
 # Only show years that have at least one month with actual records
-all_years = sorted(yr for yr in df['_year'].unique() if any(yr in m for m in months_with_data))
+valid_years = sorted(set(m.split(' ')[1] for m in months_with_data))
 all_month_years = []
-for yr in all_years:
+for yr in valid_years:
     for m in range(1, 13):
         all_month_years.append(pd.Timestamp(year=int(yr), month=m, day=1).strftime('%B %Y'))
 
