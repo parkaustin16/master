@@ -24,17 +24,17 @@ OUTPUT_USAGE_FIELD    = get_config_value("airtable_output_usage_field",    "AIRT
 OUTPUT_PLATFORM_FIELD = get_config_value("airtable_output_platform_field", "AIRTABLE_OUTPUT_PLATFORM_FIELD", "platform")
 OUTPUT_REGION_FIELD   = get_config_value("airtable_output_region_field",   "AIRTABLE_OUTPUT_REGION_FIELD",   "region")
 
-# Country code → region lookup
+# Country name → region lookup (case-insensitive)
 _REGION_MAP: dict[str, str] = {}
 for _region, _countries in {
-    "Asia":   ["au","jp","hk","tw","in","sg","my","th","vn","ph","id"],
-    "Europe": ["uk","ch_fr","ch_de","fr","de","it","es","nl","cz","se","pt","hu","pl","at"],
-    "LATAM":  ["mx","br","ar","cl","co","pe","pa"],
-    "MEA":    ["kz","tr","eg_en","eg_ar","ma","sa_en","sa","za"],
-    "Canada": ["ca_en","ca_fr"],
+    "Asia":   ["Australia","Japan","Hong Kong","Taiwan","India","Singapore","Malaysia","Thailand","Vietnam","Philippines","Indonesia"],
+    "Europe": ["United Kingdom","Switzerland","France","Germany","Italy","Spain","Netherlands","Czech Republic","Sweden","Portugal","Hungary","Poland","Austria"],
+    "LATAM":  ["Mexico","Brazil","Argentina","Chile","Colombia","Peru","Panama"],
+    "MEA":    ["Kazakhstan","Turkiye","Egypt","Morocco","Saudi Arabia","South Africa"],
+    "Canada": ["Canada"],
 }.items():
-    for _code in _countries:
-        _REGION_MAP[_code.lower()] = _region
+    for _name in _countries:
+        _REGION_MAP[_name.lower()] = _region
 
 def _get_tables():
     """Return (capture_table, output_table) using the modern pyairtable Api."""
