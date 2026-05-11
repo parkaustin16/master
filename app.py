@@ -80,8 +80,9 @@ def upsert_monthly_results(month_label, year_label, results_df):
             OUTPUT_MONTH_FIELD: month_label,
             OUTPUT_YEAR_FIELD: year_label,
             OUTPUT_PLATFORM_FIELD: platform,
-            OUTPUT_REGION_FIELD: region,
         }
+        if region:
+            record_fields[OUTPUT_REGION_FIELD] = region
         record_key = (country, month_label, year_label, platform)
 
         if record_key in existing_map:
