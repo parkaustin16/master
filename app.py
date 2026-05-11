@@ -163,18 +163,40 @@ if 'df' not in st.session_state:
 
 df = st.session_state.df
 
-# 2. Month Selector
-available_months = sorted(df['Month_Year'].unique(), reverse=True)
-selected_month_year = st.selectbox("Select Month", options=available_months)
+# 2. Month Selector — build a full Jan–Dec list for every year in the data
+months_with_data = set(df['Month_Year'].unique())
+
+# Generate all months for each year present in the data
+all_years = sorted(df['_year'].unique())
+all_month_years = []
+for yr in all_years:
+    for m in range(1, 13):
+        all_month_years.append(pd.Timestamp(year=int(yr), month=m, day=1).strftime('%B %Y'))
+
+def _fmt_month(m):
+    if m in months_with_data:
+        return m
+    return f"{m}  (no records)"
+
+selected_month_year = st.selectbox(
+    "Select Month",
+    options=all_month_years,
+    format_func=_fmt_month,
+)
 selected_month = selected_month_year.split(' ')[0]   # e.g. "March"
 selected_year  = selected_month_year.split(' ')[1]   # e.g. "2026"
 
+has_data = selected_month_year in months_with_data
+
 # 3. Preview matching records
 filtered_df = df[df['Month_Year'] == selected_month_year]
-st.caption(f"{len(filtered_df)} record(s) found for {selected_month_year}.")
+if has_data:
+    st.caption(f"{len(filtered_df)} record(s) found for {selected_month_year}.")
+else:
+    st.warning(f"No records in the Capture table for {selected_month_year}.")
 
 # 4. Calculate & Push
-if st.button("Calculate & Push to Master Usage Table"):
+if st.button("Calculate & Push to Master Usage Table", disabled=not has_data):
     if filtered_df.empty:
         st.warning(f"No records found for {selected_month_year}.")
     else:
@@ -202,22 +224,28 @@ if st.button("Calculate & Push to Master Usage Table"):
         results['year'] = selected_year
         results = results[['Master Usage', 'country', 'month', 'year', 'platform']]
 
-        st.subheader(f"Results for {selected_month_year}")
-        st.table(results)
+        # Drop rows where no valid Master Usage values were found
+        results = results[results['Master Usage'] != '0/0']
 
-        # Grand total across all groups
-        grand_total = aggregate_usage(filtered_df['Master Usage'])
-        st.metric("Grand Total", grand_total)
+        if results.empty:
+            st.warning("All records for this month are missing Master Usage values — nothing to push.")
+        else:
+            st.subheader(f"Results for {selected_month_year}")
+            st.table(results)
 
-        try:
-            created_count, updated_count = upsert_monthly_results(selected_month, selected_year, results)
-            st.success(
-                f"Synced to **{OUTPUT_TABLE_NAME}**: "
-                f"{created_count} record(s) created, {updated_count} updated."
-            )
-        except HTTPError as exc:
-            st.error("Failed to write results to the output table. Check field names and permissions.")
-            st.caption(str(exc))
-        except Exception as exc:
-            st.error("Unexpected error while writing to the output table.")
-            st.caption(str(exc))
+            # Grand total across all groups
+            grand_total = aggregate_usage(filtered_df['Master Usage'])
+            st.metric("Grand Total", grand_total)
+
+            try:
+                created_count, updated_count = upsert_monthly_results(selected_month, selected_year, results)
+                st.success(
+                    f"Synced to **{OUTPUT_TABLE_NAME}**: "
+                    f"{created_count} record(s) created, {updated_count} updated."
+                )
+            except HTTPError as exc:
+                st.error("Failed to write results to the output table. Check field names and permissions.")
+                st.caption(str(exc))
+            except Exception as exc:
+                st.error("Unexpected error while writing to the output table.")
+                st.caption(str(exc))
