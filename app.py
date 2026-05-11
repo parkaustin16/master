@@ -169,38 +169,19 @@ valid_mask = df['Master Usage'].apply(
 )
 months_with_data = set(df.loc[valid_mask, 'Month_Year'].unique())
 
-# Generate all months for each year present in the data
-# Only show years that have at least one month with actual records
-valid_years = sorted(set(m.split(' ')[1] for m in months_with_data))
-all_month_years = []
-for yr in valid_years:
-    for m in range(1, 13):
-        all_month_years.append(pd.Timestamp(year=int(yr), month=m, day=1).strftime('%B %Y'))
+# Only list months that have valid records
+all_month_years = sorted(months_with_data, key=lambda m: pd.to_datetime(m, format='%B %Y'))
 
-def _fmt_month(m):
-    if m in months_with_data:
-        return m
-    return f"{m}  (no records)"
-
-selected_month_year = st.selectbox(
-    "Select Month",
-    options=all_month_years,
-    format_func=_fmt_month,
-)
+selected_month_year = st.selectbox("Select Month", options=all_month_years)
 selected_month = selected_month_year.split(' ')[0]   # e.g. "March"
 selected_year  = selected_month_year.split(' ')[1]   # e.g. "2026"
 
-has_data = selected_month_year in months_with_data
-
 # 3. Preview matching records
 filtered_df = df[df['Month_Year'] == selected_month_year]
-if has_data:
-    st.caption(f"{len(filtered_df)} record(s) found for {selected_month_year}.")
-else:
-    st.warning(f"No records in the Capture table for {selected_month_year}.")
+st.caption(f"{len(filtered_df)} record(s) found for {selected_month_year}.")
 
 # 4. Calculate & Push
-if st.button("Calculate & Push to Master Usage Table", disabled=not has_data):
+if st.button("Calculate & Push to Master Usage Table"):
     if filtered_df.empty:
         st.warning(f"No records found for {selected_month_year}.")
     else:
