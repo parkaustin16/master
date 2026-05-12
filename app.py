@@ -235,9 +235,17 @@ if st.button("Calculate & Push to Master Usage Table"):
             st.subheader(f"Results for {selected_month_year}")
             st.table(results)
 
-            # Grand total across all groups
+            # Regional grand totals
+            st.subheader("Regional Totals")
+            region_order = ["Asia", "Europe", "LATAM", "MEA", "Canada"]
+            region_cols = st.columns(len(region_order))
+            for col, region_name in zip(region_cols, region_order):
+                region_rows = results[results['region'] == region_name]['Master Usage']
+                col.metric(region_name, aggregate_usage(region_rows) if not region_rows.empty else "0/0")
+
+            # Overall grand total
             grand_total = aggregate_usage(filtered_df['Master Usage'])
-            st.metric("Grand Total", grand_total)
+            st.metric("Overall Grand Total", grand_total)
 
             try:
                 created_count, updated_count = upsert_monthly_results(selected_month, selected_year, results)
