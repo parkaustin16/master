@@ -12,10 +12,14 @@ def get_config_value(key, env_name, default=""):
     return os.getenv(env_name, default)
 
 
-AIRTABLE_API_KEY = get_config_value("airtable_api_key", "AIRTABLE_API_KEY", "your_api_key")
-BASE_ID = get_config_value("airtable_base_id", "AIRTABLE_BASE_ID", "your_base_id")
-TABLE_NAME = get_config_value("airtable_table_name", "AIRTABLE_TABLE_NAME", "your_table_name")
+AIRTABLE_API_KEY  = get_config_value("airtable_api_key",  "AIRTABLE_API_KEY",  "your_api_key")
+BASE_ID           = get_config_value("airtable_base_id",   "AIRTABLE_BASE_ID",   "your_base_id")
+TABLE_NAME        = get_config_value("airtable_table_name", "AIRTABLE_TABLE_NAME", "your_table_name")
 OUTPUT_TABLE_NAME = get_config_value("airtable_output_table_name", "AIRTABLE_OUTPUT_TABLE_NAME", "your_output_table_name")
+
+# Second base — Jan–Nov 2025 historical data (same token, different base)
+BASE_ID_2025      = get_config_value("airtable_base_id_2025",    "AIRTABLE_BASE_ID_2025",    "")
+TABLE_NAME_2025   = get_config_value("airtable_table_name_2025", "AIRTABLE_TABLE_NAME_2025", "your_table_name")
 
 OUTPUT_COUNTRY_FIELD  = get_config_value("airtable_output_country_field",  "AIRTABLE_OUTPUT_COUNTRY_FIELD",  "country")
 OUTPUT_MONTH_FIELD    = get_config_value("airtable_output_month_field",    "AIRTABLE_OUTPUT_MONTH_FIELD",    "month")
@@ -44,8 +48,14 @@ def _get_tables():
 
 def fetch_data():
     capture_table, _ = _get_tables()
-    data = capture_table.all()
-    rows = [record['fields'] for record in data]
+    rows = [r['fields'] for r in capture_table.all()]
+
+    # Pull 2025 data from the second base if configured
+    if BASE_ID_2025 and BASE_ID_2025 not in ("your_base_id", ""):
+        api = Api(AIRTABLE_API_KEY)
+        table_2025 = api.table(BASE_ID_2025, TABLE_NAME_2025)
+        rows += [r['fields'] for r in table_2025.all()]
+
     return pd.DataFrame(rows)
 
 
