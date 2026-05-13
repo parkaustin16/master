@@ -19,8 +19,8 @@ TABLE_NAME        = get_config_value("airtable_table_name", "AIRTABLE_TABLE_NAME
 OUTPUT_TABLE_NAME = get_config_value("airtable_output_table_name", "AIRTABLE_OUTPUT_TABLE_NAME", "your_output_table_name")
 
 # Second base — Jan–Nov 2025 historical data (same token, different base)
-BASE_ID_2025      = get_config_value("airtable_base_id_2025",    "AIRTABLE_BASE_ID_2025",    "")
-TABLE_NAME_2025   = get_config_value("airtable_table_name_2025", "AIRTABLE_TABLE_NAME_2025", "your_table_name")
+BASE_ID_2025      = get_config_value("airtable_base_id_2025",    "AIRTABLE_BASE_ID_2025",    "app30tpmHFEoA4W5e")
+TABLE_NAME_2025   = get_config_value("airtable_table_name_2025", "AIRTABLE_TABLE_NAME_2025", "tblhtcDXnqDo3L87L")
 
 OUTPUT_COUNTRY_FIELD  = get_config_value("airtable_output_country_field",  "AIRTABLE_OUTPUT_COUNTRY_FIELD",  "country")
 OUTPUT_MONTH_FIELD    = get_config_value("airtable_output_month_field",    "AIRTABLE_OUTPUT_MONTH_FIELD",    "month")
@@ -62,7 +62,7 @@ def _fetch_table_rows(base_id, table_name):
 
 def fetch_data():
     tasks = {TABLE_NAME: (BASE_ID, TABLE_NAME)}
-    if BASE_ID_2025 and BASE_ID_2025 not in ("your_base_id", ""):
+    if BASE_ID_2025 and BASE_ID_2025 != BASE_ID:
         tasks[TABLE_NAME_2025 + "_2025"] = (BASE_ID_2025, TABLE_NAME_2025)
 
     rows = []
