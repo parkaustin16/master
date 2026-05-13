@@ -49,7 +49,15 @@ def _get_tables():
 
 def _fetch_table_rows(base_id, table_name):
     api = Api(AIRTABLE_API_KEY)
-    return [r['fields'] for r in api.table(base_id, table_name).all()]
+    rows = []
+    for r in api.table(base_id, table_name).all():
+        # Normalize field names to lowercase except 'Master Usage'
+        normalized = {
+            (k if k == 'Master Usage' else k.lower()): v
+            for k, v in r['fields'].items()
+        }
+        rows.append(normalized)
+    return rows
 
 
 def fetch_data():
@@ -65,8 +73,6 @@ def fetch_data():
             rows.extend(future.result())
 
     df = pd.DataFrame(rows)
-    # Normalize all column names to lowercase except 'Master Usage'
-    df.columns = [c if c == 'Master Usage' else c.lower() for c in df.columns]
     return df
 
 
@@ -199,6 +205,12 @@ if 'df' not in st.session_state:
             st.stop()
 
 df = st.session_state.df
+
+with st.expander("🔍 Debug: raw data info"):
+    st.write(f"Total rows: {len(df)}")
+    st.write(f"Columns: {list(df.columns)}")
+    st.write(f"Years found: {sorted(df['_year'].unique()) if '_year' in df.columns else 'n/a (period parse may have failed)'}")
+    st.write(f"2025 base configured: {bool(BASE_ID_2025 and BASE_ID_2025 not in ('your_base_id', ''))}")
 
 # 2. Month Selector — build a full Jan–Dec list for every year in the data
 valid_mask = df['Master Usage'].apply(
