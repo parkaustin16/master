@@ -219,6 +219,21 @@ with st.expander("🔍 Debug: raw data info"):
     st.write(f"2025 base configured: {bool(BASE_ID_2025 and BASE_ID_2025 not in ('your_base_id', ''))}")
     st.write(f"BASE_ID_2025 value: '{BASE_ID_2025}'")
     st.write(f"Secrets keys found: {list(st.secrets.keys())}")
+    # Show full secrets structure (keys only, no values) to catch nested sections
+    def _secrets_structure(s, prefix=""):
+        result = {}
+        for k in s.keys():
+            full_key = f"{prefix}.{k}" if prefix else k
+            try:
+                sub = s[k]
+                if hasattr(sub, 'keys'):
+                    result.update(_secrets_structure(sub, full_key))
+                else:
+                    result[full_key] = type(sub).__name__
+            except Exception:
+                result[full_key] = "?"
+        return result
+    st.write(f"Full secrets structure: {_secrets_structure(st.secrets)}")
     sample_2025 = df[df['_year'] == '2025']['Master Usage'].dropna().head(10).tolist() if '_year' in df.columns else []
     st.write(f"Sample 2025 Master Usage values: {sample_2025}")
     st.write(f"months_with_data: {sorted(months_with_data)}")
