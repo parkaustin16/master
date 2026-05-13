@@ -28,6 +28,7 @@ OUTPUT_YEAR_FIELD     = get_config_value("airtable_output_year_field",     "AIRT
 OUTPUT_USAGE_FIELD    = get_config_value("airtable_output_usage_field",    "AIRTABLE_OUTPUT_USAGE_FIELD",    "Master Usage")
 OUTPUT_PLATFORM_FIELD = get_config_value("airtable_output_platform_field", "AIRTABLE_OUTPUT_PLATFORM_FIELD", "platform")
 OUTPUT_REGION_FIELD   = get_config_value("airtable_output_region_field",   "AIRTABLE_OUTPUT_REGION_FIELD",   "region")
+OUTPUT_PCT_FIELD      = get_config_value("airtable_output_pct_field",      "AIRTABLE_OUTPUT_PCT_FIELD",      "Master Usage (%)")
 
 # Country name → region lookup (case-insensitive)
 _REGION_MAP: dict[str, str] = {}
@@ -100,9 +101,11 @@ def upsert_monthly_results(month_label, year_label, results_df):
         usage = str(row['Master Usage']).strip()
         platform = str(row.get('platform', '')).strip()
         region = _REGION_MAP.get(country.lower(), '')
+        pct = usage_to_pct(usage)
 
         record_fields = {
             OUTPUT_USAGE_FIELD: usage,
+            OUTPUT_PCT_FIELD: pct,
             OUTPUT_COUNTRY_FIELD: country,
             OUTPUT_MONTH_FIELD: month_label,
             OUTPUT_YEAR_FIELD: year_label,
@@ -121,7 +124,18 @@ def upsert_monthly_results(month_label, year_label, results_df):
 
     return created_count, updated_count
 
-REQUIRED_SOURCE_COLS = {'period', 'Master Usage'}
+def usage_to_pct(usage_str):
+    """Convert 'X/Y' to 'P%', or '' if denominator is 0."""
+    try:
+        parts = str(usage_str).replace(' ', '').split('/')
+        num, den = int(parts[0]), int(parts[1])
+        if den == 0:
+            return ''
+        return f"{round(num / den * 100)}%"
+    except (ValueError, IndexError, ZeroDivisionError):
+        return ''
+
+
 
 def aggregate_usage(usage_series):
     """
@@ -277,7 +291,8 @@ if st.button("Calculate & Push to Master Usage Table"):
         results['month'] = selected_month
         results['year'] = selected_year
         results['region'] = results['country'].str.lower().map(_REGION_MAP).fillna('')
-        results = results[['Master Usage', 'country', 'month', 'year', 'platform', 'region']]
+        results['Master Usage (%)'] = results['Master Usage'].apply(usage_to_pct)
+        results = results[['Master Usage', 'Master Usage (%)', 'country', 'month', 'year', 'platform', 'region']]
 
         # Drop rows where numerator and denominator both summed to 0
         results = results[results['Master Usage'].str.replace(' ', '') != '0/0']
@@ -285,30 +300,43 @@ if st.button("Calculate & Push to Master Usage Table"):
         if results.empty:
             st.warning("All records for this month are missing Master Usage values — nothing to push.")
         else:
-            st.subheader(f"Results for {selected_month_year}")
-            st.table(results)
+            st.session_state['results'] = results
+            st.session_state['filtered_df'] = filtered_df
+            st.session_state['selected_month'] = selected_month
+            st.session_state['selected_year'] = selected_year
+            st.session_state['selected_month_year'] = selected_month_year
 
-            # Regional grand totals
-            st.subheader("Regional Totals")
-            region_order = ["Asia", "Europe", "LATAM", "MEA", "Canada"]
-            region_cols = st.columns(len(region_order))
-            for col, region_name in zip(region_cols, region_order):
-                region_rows = results[results['region'] == region_name]['Master Usage']
-                col.metric(region_name, aggregate_usage(region_rows) if not region_rows.empty else "0/0")
+if 'results' in st.session_state:
+    results = st.session_state['results']
+    filtered_df = st.session_state['filtered_df']
+    selected_month = st.session_state['selected_month']
+    selected_year = st.session_state['selected_year']
+    selected_month_year = st.session_state['selected_month_year']
 
-            # Overall grand total
-            grand_total = aggregate_usage(filtered_df['Master Usage'])
-            st.metric("Overall Grand Total", grand_total)
+    st.subheader(f"Results for {selected_month_year}")
+    st.table(results)
 
-            try:
-                created_count, updated_count = upsert_monthly_results(selected_month, selected_year, results)
-                st.success(
-                    f"Synced to **{OUTPUT_TABLE_NAME}**: "
-                    f"{created_count} record(s) created, {updated_count} updated."
-                )
-            except HTTPError as exc:
-                st.error("Failed to write results to the output table. Check field names and permissions.")
-                st.caption(str(exc))
-            except Exception as exc:
-                st.error("Unexpected error while writing to the output table.")
-                st.caption(str(exc))
+    # Regional grand totals
+    st.subheader("Regional Totals")
+    region_order = ["Asia", "Europe", "LATAM", "MEA", "Canada"]
+    region_cols = st.columns(len(region_order))
+    for col, region_name in zip(region_cols, region_order):
+        region_rows = results[results['region'] == region_name]['Master Usage']
+        col.metric(region_name, aggregate_usage(region_rows) if not region_rows.empty else "0/0")
+
+    grand_total = aggregate_usage(filtered_df['Master Usage'])
+    st.metric("Overall Grand Total", grand_total)
+
+    if st.button("Upload to Airtable"):
+        try:
+            created_count, updated_count = upsert_monthly_results(selected_month, selected_year, results)
+            st.success(
+                f"Synced to **{OUTPUT_TABLE_NAME}**: "
+                f"{created_count} record(s) created, {updated_count} updated."
+            )
+        except HTTPError as exc:
+            st.error("Failed to write results to the output table. Check field names and permissions.")
+            st.caption(str(exc))
+        except Exception as exc:
+            st.error("Unexpected error while writing to the output table.")
+            st.caption(str(exc))
