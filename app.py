@@ -56,7 +56,10 @@ def fetch_data():
         table_2025 = api.table(BASE_ID_2025, TABLE_NAME_2025)
         rows += [r['fields'] for r in table_2025.all()]
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    # Normalize all column names to lowercase except 'Master Usage'
+    df.columns = [c if c == 'Master Usage' else c.lower() for c in df.columns]
+    return df
 
 
 def upsert_monthly_results(month_label, year_label, results_df):
