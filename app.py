@@ -327,12 +327,12 @@ if 'results' in st.session_state:
         fraction = aggregate_usage(region_rows) if not region_rows.empty else "0/0"
         pct = usage_to_pct(fraction)
         col.metric(region_name, fraction)
-        col.caption(pct if pct else "—")
+        col.markdown(f"<div style='font-size:1.75rem;font-weight:600;margin-top:-1rem'>{pct if pct else '—'}</div>", unsafe_allow_html=True)
 
     grand_total = aggregate_usage(filtered_df['Master Usage'])
     grand_pct = usage_to_pct(grand_total)
     st.metric("Overall Grand Total", grand_total)
-    st.caption(grand_pct if grand_pct else "—")
+    st.markdown(f"<div style='font-size:1.75rem;font-weight:600;margin-top:-1rem'>{grand_pct if grand_pct else '—'}</div>", unsafe_allow_html=True)
 
     if st.button("Upload to Airtable"):
         try:
