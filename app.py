@@ -135,6 +135,8 @@ def usage_to_pct(usage_str):
     except (ValueError, IndexError, ZeroDivisionError):
         return ''
 
+REQUIRED_SOURCE_COLS = {'period', 'Master Usage'}
+
 
 
 def aggregate_usage(usage_series):
