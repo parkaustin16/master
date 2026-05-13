@@ -22,13 +22,13 @@ OUTPUT_TABLE_NAME = get_config_value("airtable_output_table_name", "AIRTABLE_OUT
 BASE_ID_2025      = get_config_value("airtable_base_id_2025",    "AIRTABLE_BASE_ID_2025",    "app30tpmHFEoA4W5e")
 TABLE_NAME_2025   = get_config_value("airtable_table_name_2025", "AIRTABLE_TABLE_NAME_2025", "tblhtcDXnqDo3L87L")
 
-OUTPUT_COUNTRY_FIELD  = get_config_value("airtable_output_country_field",  "AIRTABLE_OUTPUT_COUNTRY_FIELD",  "country")
-OUTPUT_MONTH_FIELD    = get_config_value("airtable_output_month_field",    "AIRTABLE_OUTPUT_MONTH_FIELD",    "month")
-OUTPUT_YEAR_FIELD     = get_config_value("airtable_output_year_field",     "AIRTABLE_OUTPUT_YEAR_FIELD",     "year")
-OUTPUT_USAGE_FIELD    = get_config_value("airtable_output_usage_field",    "AIRTABLE_OUTPUT_USAGE_FIELD",    "Master Usage")
-OUTPUT_PLATFORM_FIELD = get_config_value("airtable_output_platform_field", "AIRTABLE_OUTPUT_PLATFORM_FIELD", "platform")
-OUTPUT_REGION_FIELD   = get_config_value("airtable_output_region_field",   "AIRTABLE_OUTPUT_REGION_FIELD",   "region")
-OUTPUT_PCT_FIELD      = get_config_value("airtable_output_pct_field",      "AIRTABLE_OUTPUT_PCT_FIELD",      "Master Usage (%)")
+OUTPUT_COUNTRY_FIELD  = "country"
+OUTPUT_MONTH_FIELD    = "month"
+OUTPUT_YEAR_FIELD     = "year"
+OUTPUT_USAGE_FIELD    = "Master Usage"
+OUTPUT_PLATFORM_FIELD = "platform"
+OUTPUT_REGION_FIELD   = "region"
+OUTPUT_PCT_FIELD      = "Master Usage (%)"
 
 # Country name → region lookup (case-insensitive)
 _REGION_MAP: dict[str, str] = {}
