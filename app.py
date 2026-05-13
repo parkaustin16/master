@@ -206,6 +206,12 @@ if 'df' not in st.session_state:
 
 df = st.session_state.df
 
+# 2. Month Selector — build a full Jan–Dec list for every year in the data
+valid_mask = df['Master Usage'].apply(
+    lambda v: pd.notna(v) and '/' in str(v) and str(v).replace(' ', '') != '0/0'
+)
+months_with_data = set(df.loc[valid_mask, 'Month_Year'].unique())
+
 with st.expander("🔍 Debug: raw data info"):
     st.write(f"Total rows: {len(df)}")
     st.write(f"Columns: {list(df.columns)}")
@@ -216,12 +222,6 @@ with st.expander("🔍 Debug: raw data info"):
     sample_2025 = df[df['_year'] == '2025']['Master Usage'].dropna().head(10).tolist() if '_year' in df.columns else []
     st.write(f"Sample 2025 Master Usage values: {sample_2025}")
     st.write(f"months_with_data: {sorted(months_with_data)}")
-
-# 2. Month Selector — build a full Jan–Dec list for every year in the data
-valid_mask = df['Master Usage'].apply(
-    lambda v: pd.notna(v) and '/' in str(v) and str(v).strip() != '0/0'
-)
-months_with_data = set(df.loc[valid_mask, 'Month_Year'].unique())
 
 # Only list months that have valid records
 all_month_years = sorted(months_with_data, key=lambda m: pd.to_datetime(m, format='%B %Y'))
@@ -264,8 +264,8 @@ if st.button("Calculate & Push to Master Usage Table"):
         results['region'] = results['country'].str.lower().map(_REGION_MAP).fillna('')
         results = results[['Master Usage', 'country', 'month', 'year', 'platform', 'region']]
 
-        # Drop rows where no valid Master Usage values were found
-        results = results[results['Master Usage'] != '0/0']
+        # Drop rows where numerator and denominator both summed to 0
+        results = results[results['Master Usage'].str.replace(' ', '') != '0/0']
 
         if results.empty:
             st.warning("All records for this month are missing Master Usage values — nothing to push.")
