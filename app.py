@@ -209,10 +209,13 @@ df = st.session_state.df
 with st.expander("🔍 Debug: raw data info"):
     st.write(f"Total rows: {len(df)}")
     st.write(f"Columns: {list(df.columns)}")
-    st.write(f"Years found: {sorted(df['_year'].unique()) if '_year' in df.columns else 'n/a (period parse may have failed)'}")
+    st.write(f"Years found: {sorted(df['_year'].unique()) if '_year' in df.columns else 'n/a'}")
     st.write(f"2025 base configured: {bool(BASE_ID_2025 and BASE_ID_2025 not in ('your_base_id', ''))}")
     st.write(f"BASE_ID_2025 value: '{BASE_ID_2025}'")
     st.write(f"Secrets keys found: {list(st.secrets.keys())}")
+    sample_2025 = df[df['_year'] == '2025']['Master Usage'].dropna().head(10).tolist() if '_year' in df.columns else []
+    st.write(f"Sample 2025 Master Usage values: {sample_2025}")
+    st.write(f"months_with_data: {sorted(months_with_data)}")
 
 # 2. Month Selector — build a full Jan–Dec list for every year in the data
 valid_mask = df['Master Usage'].apply(
