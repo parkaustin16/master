@@ -1,4 +1,5 @@
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 import streamlit as st
@@ -46,15 +47,22 @@ def _get_tables():
     return api.table(BASE_ID, TABLE_NAME), api.table(BASE_ID, OUTPUT_TABLE_NAME)
 
 
-def fetch_data():
-    capture_table, _ = _get_tables()
-    rows = [r['fields'] for r in capture_table.all()]
+def _fetch_table_rows(base_id, table_name):
+    api = Api(AIRTABLE_API_KEY)
+    return [r['fields'] for r in api.table(base_id, table_name).all()]
 
-    # Pull 2025 data from the second base if configured
+
+def fetch_data():
+    tasks = {TABLE_NAME: (BASE_ID, TABLE_NAME)}
     if BASE_ID_2025 and BASE_ID_2025 not in ("your_base_id", ""):
-        api = Api(AIRTABLE_API_KEY)
-        table_2025 = api.table(BASE_ID_2025, TABLE_NAME_2025)
-        rows += [r['fields'] for r in table_2025.all()]
+        tasks[TABLE_NAME_2025 + "_2025"] = (BASE_ID_2025, TABLE_NAME_2025)
+
+    rows = []
+    with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
+        futures = {executor.submit(_fetch_table_rows, base, tbl): key
+                   for key, (base, tbl) in tasks.items()}
+        for future in as_completed(futures):
+            rows.extend(future.result())
 
     df = pd.DataFrame(rows)
     # Normalize all column names to lowercase except 'Master Usage'
