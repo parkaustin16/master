@@ -324,10 +324,15 @@ if 'results' in st.session_state:
     region_cols = st.columns(len(region_order))
     for col, region_name in zip(region_cols, region_order):
         region_rows = results[results['region'] == region_name]['Master Usage']
-        col.metric(region_name, aggregate_usage(region_rows) if not region_rows.empty else "0/0")
+        fraction = aggregate_usage(region_rows) if not region_rows.empty else "0/0"
+        pct = usage_to_pct(fraction)
+        col.metric(region_name, fraction)
+        col.caption(pct if pct else "—")
 
     grand_total = aggregate_usage(filtered_df['Master Usage'])
+    grand_pct = usage_to_pct(grand_total)
     st.metric("Overall Grand Total", grand_total)
+    st.caption(grand_pct if grand_pct else "—")
 
     if st.button("Upload to Airtable"):
         try:
