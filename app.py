@@ -231,11 +231,13 @@ df      = st.session_state.df
 df_2025 = st.session_state.df_2025
 
 # 2. Month Selector
-# Months from capture table (2026+) that have valid Master Usage
+# Months from capture table (2026+ only) that have valid Master Usage
 valid_mask = df['Master Usage'].apply(
     lambda v: pd.notna(v) and '/' in str(v) and str(v).replace(' ', '') != '0/0'
 )
-capture_months = set(df.loc[valid_mask & ~df['_prebuilt'], 'Month_Year'].unique())
+capture_months = set(
+    df.loc[valid_mask & ~df['_prebuilt'] & (df['_year'] != '2025'), 'Month_Year'].unique()
+)
 
 # Months from the pre-built 2025 table
 prebuilt_months = set(df_2025['Month_Year'].unique()) if not df_2025.empty else set()
@@ -249,7 +251,7 @@ selected_month_year = st.selectbox("Select Month", options=all_month_years)
 selected_month = selected_month_year.split(' ')[0]
 selected_year  = selected_month_year.split(' ')[1]
 
-is_prebuilt = selected_month_year in prebuilt_months
+is_prebuilt = selected_year == '2025'
 
 # 3. Preview
 if is_prebuilt:
