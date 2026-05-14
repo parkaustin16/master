@@ -18,9 +18,8 @@ BASE_ID           = get_config_value("airtable_base_id",   "AIRTABLE_BASE_ID",  
 TABLE_NAME        = get_config_value("airtable_table_name", "AIRTABLE_TABLE_NAME", "your_table_name")
 OUTPUT_TABLE_NAME = get_config_value("airtable_output_table_name", "AIRTABLE_OUTPUT_TABLE_NAME", "your_output_table_name")
 
-# Second base — Jan–Nov 2025 historical data (same token, different base)
-BASE_ID_2025      = get_config_value("airtable_base_id_2025",    "AIRTABLE_BASE_ID_2025",    "app30tpmHFEoA4W5e")
-TABLE_NAME_2025   = get_config_value("airtable_table_name_2025", "AIRTABLE_TABLE_NAME_2025", "tblhtcDXnqDo3L87L")
+# Pre-aggregated 2025 data table (on the main base)
+TABLE_NAME_2025_PREBUILT = "2025 Master Usage"
 
 OUTPUT_COUNTRY_FIELD  = "country"
 OUTPUT_MONTH_FIELD    = "month"
@@ -43,16 +42,19 @@ for _region, _countries in {
         _REGION_MAP[_name.lower()] = _region
 
 def _get_tables():
-    """Return (capture_table, output_table) using the modern pyairtable Api."""
+    """Return (capture_table, output_table, prebuilt_2025_table) using the modern pyairtable Api."""
     api = Api(AIRTABLE_API_KEY)
-    return api.table(BASE_ID, TABLE_NAME), api.table(BASE_ID, OUTPUT_TABLE_NAME)
+    return (
+        api.table(BASE_ID, TABLE_NAME),
+        api.table(BASE_ID, OUTPUT_TABLE_NAME),
+        api.table(BASE_ID, TABLE_NAME_2025_PREBUILT),
+    )
 
 
 def _fetch_table_rows(base_id, table_name):
     api = Api(AIRTABLE_API_KEY)
     rows = []
     for r in api.table(base_id, table_name).all():
-        # Normalize field names to lowercase except 'Master Usage'
         normalized = {
             (k if k == 'Master Usage' else k.lower()): v
             for k, v in r['fields'].items()
@@ -62,23 +64,17 @@ def _fetch_table_rows(base_id, table_name):
 
 
 def fetch_data():
-    tasks = {TABLE_NAME: (BASE_ID, TABLE_NAME)}
-    if BASE_ID_2025 and BASE_ID_2025 != BASE_ID:
-        tasks[TABLE_NAME_2025 + "_2025"] = (BASE_ID_2025, TABLE_NAME_2025)
-
-    rows = []
-    with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
-        futures = {executor.submit(_fetch_table_rows, base, tbl): key
-                   for key, (base, tbl) in tasks.items()}
-        for future in as_completed(futures):
-            rows.extend(future.result())
-
-    df = pd.DataFrame(rows)
-    return df
+    """Fetch capture records (2026+) in parallel with the pre-built 2025 table."""
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_capture = executor.submit(_fetch_table_rows, BASE_ID, TABLE_NAME)
+        f_2025    = executor.submit(_fetch_table_rows, BASE_ID, TABLE_NAME_2025_PREBUILT)
+        capture_rows = f_capture.result()
+        prebuilt_rows = f_2025.result()
+    return pd.DataFrame(capture_rows), pd.DataFrame(prebuilt_rows)
 
 
 def upsert_monthly_results(month_label, year_label, results_df):
-    _, output_table = _get_tables()
+    _, output_table, _ = _get_tables()
     existing_records = output_table.all()
     existing_map = {}
 
@@ -160,7 +156,7 @@ def aggregate_usage(usage_series):
 
 
 def load_data():
-    """Fetch and pre-process records from the Capture table."""
+    """Fetch capture records and pre-built 2025 records."""
     if (
         AIRTABLE_API_KEY == "your_api_key"
         or BASE_ID == "your_base_id"
@@ -173,29 +169,38 @@ def load_data():
         )
         st.stop()
 
-    df_raw = fetch_data()
-    if df_raw.empty:
-        st.warning("Airtable returned no records.")
+    df_capture, df_2025 = fetch_data()
+
+    # Process capture table (2026+ data)
+    if df_capture.empty:
+        st.warning("Airtable returned no records from the Capture table.")
         st.stop()
 
-    missing = REQUIRED_SOURCE_COLS - set(df_raw.columns)
+    missing = REQUIRED_SOURCE_COLS - set(df_capture.columns)
     if missing:
-        st.error(
-            f"Required column(s) not found in the Capture table: {missing}. "
-            "Check your Airtable field names."
-        )
+        st.error(f"Required column(s) not found in the Capture table: {missing}.")
         st.stop()
 
-    df_raw['period'] = pd.to_datetime(df_raw['period'], errors='coerce')
-    df_raw = df_raw.dropna(subset=['period'])
-    if df_raw.empty:
-        st.warning("No records with a valid period date were found.")
-        st.stop()
+    df_capture['period'] = pd.to_datetime(df_capture['period'], errors='coerce')
+    df_capture = df_capture.dropna(subset=['period'])
+    df_capture['_month'] = df_capture['period'].dt.strftime('%B')
+    df_capture['_year']  = df_capture['period'].dt.strftime('%Y')
+    df_capture['Month_Year'] = df_capture['_month'] + ' ' + df_capture['_year']
 
-    df_raw['_month'] = df_raw['period'].dt.strftime('%B')
-    df_raw['_year'] = df_raw['period'].dt.strftime('%Y')
-    df_raw['Month_Year'] = df_raw['_month'] + ' ' + df_raw['_year']
-    return df_raw
+    # Process pre-built 2025 table — data already has month/year/Master Usage columns
+    if not df_2025.empty:
+        # Normalise month/year columns if they exist
+        for col_alias in ('month', 'year'):
+            if col_alias not in df_2025.columns:
+                df_2025[col_alias] = ''
+        df_2025['Month_Year'] = df_2025['month'].str.strip() + ' ' + df_2025['year'].astype(str).str.strip()
+        df_2025['_month'] = df_2025['month'].str.strip()
+        df_2025['_year']  = df_2025['year'].astype(str).str.strip()
+        df_2025['_prebuilt'] = True
+
+    df_capture['_prebuilt'] = False
+    df_combined = pd.concat([df_capture, df_2025], ignore_index=True)
+    return df_combined, df_2025
 
 
 # --- Streamlit UI ---
@@ -206,11 +211,13 @@ col_title, col_reload = st.columns([4, 1])
 with col_reload:
     if st.button("🔄 Reload Data"):
         st.session_state.pop('df', None)
+        st.session_state.pop('df_2025', None)
+        st.session_state.pop('results', None)
 
 if 'df' not in st.session_state:
     with st.spinner("Fetching data from Airtable…"):
         try:
-            st.session_state.df = load_data()
+            st.session_state.df, st.session_state.df_2025 = load_data()
         except HTTPError as exc:
             st.error("Airtable request failed. Check your API key, base ID, and table name.")
             st.caption(str(exc))
@@ -220,61 +227,70 @@ if 'df' not in st.session_state:
             st.caption(str(exc))
             st.stop()
 
-df = st.session_state.df
+df      = st.session_state.df
+df_2025 = st.session_state.df_2025
 
-# 2. Month Selector — build a full Jan–Dec list for every year in the data
+# 2. Month Selector
+# Months from capture table (2026+) that have valid Master Usage
 valid_mask = df['Master Usage'].apply(
     lambda v: pd.notna(v) and '/' in str(v) and str(v).replace(' ', '') != '0/0'
 )
-months_with_data = set(df.loc[valid_mask, 'Month_Year'].unique())
+capture_months = set(df.loc[valid_mask & ~df['_prebuilt'], 'Month_Year'].unique())
 
-with st.expander("🔍 Debug: raw data info"):
-    st.write(f"Total rows: {len(df)}")
-    st.write(f"Columns: {list(df.columns)}")
-    st.write(f"Years found: {sorted(df['_year'].unique()) if '_year' in df.columns else 'n/a'}")
-    st.write(f"2025 base configured: {bool(BASE_ID_2025 and BASE_ID_2025 not in ('your_base_id', ''))}")
-    st.write(f"BASE_ID_2025 value: '{BASE_ID_2025}'")
-    st.write(f"Secrets keys found: {list(st.secrets.keys())}")
-    # Show full secrets structure (keys only, no values) to catch nested sections
-    def _secrets_structure(s, prefix=""):
-        result = {}
-        for k in s.keys():
-            full_key = f"{prefix}.{k}" if prefix else k
-            try:
-                sub = s[k]
-                if hasattr(sub, 'keys'):
-                    result.update(_secrets_structure(sub, full_key))
-                else:
-                    result[full_key] = type(sub).__name__
-            except Exception:
-                result[full_key] = "?"
-        return result
-    st.write(f"Full secrets structure: {_secrets_structure(st.secrets)}")
-    sample_2025 = df[df['_year'] == '2025']['Master Usage'].dropna().head(10).tolist() if '_year' in df.columns else []
-    st.write(f"Sample 2025 Master Usage values: {sample_2025}")
-    st.write(f"months_with_data: {sorted(months_with_data)}")
+# Months from the pre-built 2025 table
+prebuilt_months = set(df_2025['Month_Year'].unique()) if not df_2025.empty else set()
+
+months_with_data = capture_months | prebuilt_months
 
 # Only list months that have valid records
 all_month_years = sorted(months_with_data, key=lambda m: pd.to_datetime(m, format='%B %Y'))
 
 selected_month_year = st.selectbox("Select Month", options=all_month_years)
-selected_month = selected_month_year.split(' ')[0]   # e.g. "March"
-selected_year  = selected_month_year.split(' ')[1]   # e.g. "2026"
+selected_month = selected_month_year.split(' ')[0]
+selected_year  = selected_month_year.split(' ')[1]
 
-# 3. Preview matching records
-filtered_df = df[df['Month_Year'] == selected_month_year]
-st.caption(f"{len(filtered_df)} record(s) found for {selected_month_year}.")
+is_prebuilt = selected_month_year in prebuilt_months
 
-# 4. Calculate & Push
-if st.button("Calculate & Push to Master Usage Table"):
+# 3. Preview
+if is_prebuilt:
+    filtered_df = df_2025[df_2025['Month_Year'] == selected_month_year]
+    st.caption(f"{len(filtered_df)} pre-aggregated record(s) found for {selected_month_year}.")
+else:
+    filtered_df = df[df['Month_Year'] == selected_month_year]
+    st.caption(f"{len(filtered_df)} record(s) found for {selected_month_year}.")
+
+# 4. Calculate
+btn_label = "Load Results" if is_prebuilt else "Calculate"
+if st.button(btn_label):
     if filtered_df.empty:
         st.warning(f"No records found for {selected_month_year}.")
+    elif is_prebuilt:
+        # Pass through pre-aggregated data directly
+        results = filtered_df.copy()
+        for col in ('country', 'platform', 'region', 'month', 'year'):
+            if col not in results.columns:
+                results[col] = ''
+        results['month'] = selected_month
+        results['year']  = selected_year
+        if 'region' not in results.columns or results['region'].eq('').all():
+            results['region'] = results['country'].str.lower().map(_REGION_MAP).fillna('')
+        results['Master Usage (%)'] = results['Master Usage'].apply(usage_to_pct)
+        results = results[['Master Usage', 'Master Usage (%)', 'country', 'month', 'year', 'platform', 'region']]
+        results = results[results['Master Usage'].str.replace(' ', '') != '0/0']
+
+        if results.empty:
+            st.warning("No valid Master Usage values found for this month.")
+        else:
+            st.session_state['results'] = results
+            st.session_state['filtered_df'] = filtered_df
+            st.session_state['selected_month'] = selected_month
+            st.session_state['selected_year'] = selected_year
+            st.session_state['selected_month_year'] = selected_month_year
     else:
-        # Group by Country + Platform (include only columns that exist)
+        # Aggregate from raw capture records
         group_cols = [c for c in ['country', 'platform'] if c in filtered_df.columns]
 
         if not group_cols:
-            # No grouping dimensions — aggregate everything into one row
             total = aggregate_usage(filtered_df['Master Usage'])
             results = pd.DataFrame([{'Master Usage': total}])
         else:
@@ -285,7 +301,6 @@ if st.button("Calculate & Push to Master Usage Table"):
                 .reset_index()
             )
 
-        # Ensure expected columns exist
         for col in ('country', 'platform'):
             if col not in results.columns:
                 results[col] = ''
@@ -295,8 +310,6 @@ if st.button("Calculate & Push to Master Usage Table"):
         results['region'] = results['country'].str.lower().map(_REGION_MAP).fillna('')
         results['Master Usage (%)'] = results['Master Usage'].apply(usage_to_pct)
         results = results[['Master Usage', 'Master Usage (%)', 'country', 'month', 'year', 'platform', 'region']]
-
-        # Drop rows where numerator and denominator both summed to 0
         results = results[results['Master Usage'].str.replace(' ', '') != '0/0']
 
         if results.empty:
@@ -329,7 +342,7 @@ if 'results' in st.session_state:
         col.metric(region_name, fraction)
         col.markdown(f"<div style='font-size:1.75rem;font-weight:600;margin-top:-1rem'>{pct if pct else '—'}</div>", unsafe_allow_html=True)
 
-    grand_total = aggregate_usage(filtered_df['Master Usage'])
+    grand_total = aggregate_usage(results['Master Usage'])
     grand_pct = usage_to_pct(grand_total)
     st.metric("Overall Grand Total", grand_total)
     st.markdown(f"<div style='font-size:1.75rem;font-weight:600;margin-top:-1rem'>{grand_pct if grand_pct else '—'}</div>", unsafe_allow_html=True)
@@ -340,7 +353,7 @@ if 'results' in st.session_state:
             progress_bar = st.progress(0, text="Uploading…")
             created_count, updated_count = 0, 0
 
-            _, output_table = _get_tables()
+            _, output_table, _ = _get_tables()
             existing_records = output_table.all()
             existing_map = {}
             for rec in existing_records:
