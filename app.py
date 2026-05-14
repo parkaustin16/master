@@ -336,7 +336,53 @@ if 'results' in st.session_state:
 
     if st.button("Upload to Airtable"):
         try:
-            created_count, updated_count = upsert_monthly_results(selected_month, selected_year, results)
+            total_rows = len(results)
+            progress_bar = st.progress(0, text="Uploading…")
+            created_count, updated_count = 0, 0
+
+            _, output_table = _get_tables()
+            existing_records = output_table.all()
+            existing_map = {}
+            for rec in existing_records:
+                fields = rec.get('fields', {})
+                key = (
+                    str(fields.get(OUTPUT_COUNTRY_FIELD, '')).strip(),
+                    str(fields.get(OUTPUT_MONTH_FIELD, '')).strip(),
+                    str(fields.get(OUTPUT_YEAR_FIELD, '')).strip(),
+                    str(fields.get(OUTPUT_PLATFORM_FIELD, '')).strip(),
+                )
+                if key[0] and key[1]:
+                    existing_map[key] = rec['id']
+
+            for i, (_, row) in enumerate(results.iterrows(), start=1):
+                country  = str(row['country']).strip()
+                usage    = str(row['Master Usage']).strip()
+                platform = str(row.get('platform', '')).strip()
+                region   = _REGION_MAP.get(country.lower(), '')
+                pct      = usage_to_pct(usage)
+
+                record_fields = {
+                    OUTPUT_USAGE_FIELD:    usage,
+                    OUTPUT_PCT_FIELD:      pct,
+                    OUTPUT_COUNTRY_FIELD:  country,
+                    OUTPUT_MONTH_FIELD:    selected_month,
+                    OUTPUT_YEAR_FIELD:     selected_year,
+                    OUTPUT_PLATFORM_FIELD: platform,
+                }
+                if region:
+                    record_fields[OUTPUT_REGION_FIELD] = region
+
+                record_key = (country, selected_month, selected_year, platform)
+                if record_key in existing_map:
+                    output_table.update(existing_map[record_key], record_fields)
+                    updated_count += 1
+                else:
+                    output_table.create(record_fields)
+                    created_count += 1
+
+                progress_bar.progress(i / total_rows, text=f"Uploading… {i}/{total_rows}")
+
+            progress_bar.empty()
             st.success(
                 f"Synced to **{OUTPUT_TABLE_NAME}**: "
                 f"{created_count} record(s) created, {updated_count} updated."
