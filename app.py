@@ -1,3 +1,4 @@
+import io
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -348,6 +349,29 @@ if 'results' in st.session_state:
     grand_pct = usage_to_pct(grand_total)
     st.metric("Overall Grand Total", grand_total)
     st.markdown(f"<div style='font-size:1.75rem;font-weight:600;margin-top:-1rem'>{grand_pct if grand_pct else '—'}</div>", unsafe_allow_html=True)
+
+    # --- Excel Export ---
+    region_order = ["Asia", "Europe", "LATAM", "MEA", "Canada"]
+    totals_rows = []
+    for region_name in region_order:
+        region_rows = results[results['region'] == region_name]['Master Usage']
+        fraction = aggregate_usage(region_rows) if not region_rows.empty else "0/0"
+        totals_rows.append({'Region': region_name, 'Master Usage': fraction, 'Master Usage (%)': usage_to_pct(fraction) or '—'})
+    totals_rows.append({'Region': 'Overall', 'Master Usage': grand_total, 'Master Usage (%)': grand_pct or '—'})
+    df_totals = pd.DataFrame(totals_rows)
+
+    excel_buf = io.BytesIO()
+    with pd.ExcelWriter(excel_buf, engine='openpyxl') as writer:
+        results.to_excel(writer, sheet_name='Results', index=False)
+        df_totals.to_excel(writer, sheet_name='Totals', index=False)
+    excel_buf.seek(0)
+
+    st.download_button(
+        label="⬇️ Export to Excel",
+        data=excel_buf,
+        file_name=f"master_usage_{selected_month_year.replace(' ', '_')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
     if st.button("Upload to Airtable"):
         try:
